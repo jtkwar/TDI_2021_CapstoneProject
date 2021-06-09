@@ -32,7 +32,7 @@ def homepage_app():
     # keep only some information for now
     license_df = license_df[['global_id', 'name', 'address1', 'address2', 'city']]
     # keep only processed companies in the list
-    license_df = license_df[license_df["name"].isin(companies)]
+    license_df = license_df[license_df["global_id"].isin(companies)]
     st.subheader("Project Description")
     st.write("[Github Repository Link](https://github.com/jtkwar/TDI_2021_CapstoneProject)")
     st.write("Analysis and Comparison of {0} Dispensaries in the State of Washington between January 1, 2018 and December 31, 2020.".format(len(companies)))
@@ -91,7 +91,7 @@ def single_company_stats():
     ### resampling dictionary ###
     resample_dict = {'Daily': 'D', 'Weekly': 'W', 'Monthly': 'M', 'Quarterly': 'Q',
                      'Yearly': 'Y'}
-    st.header("Sales Data Visualization for {}".format(company.rstrip()))
+    st.header("Sales Data Summary for {}".format(company.rstrip()))
     tp_selection = st.selectbox("Select Time Period Sampling", list(resample_dict.keys()))
     ######################################################################################
     query_string = "`" + str(company_id) + "` > 0"
@@ -108,6 +108,7 @@ def single_company_stats():
     st.write("Average {0} Medical Sales: ${1:,.2f}".format(tp_selection, medicalSales[str(company_id)].mean()))
     st.write("Average {0} Recreational Sales: ${1:,.2f}".format(tp_selection, recreationalSales[str(company_id)].mean()))
     
+    st.header("Sales Data Visualization")
     scol1, scol2, scol3 = st.beta_columns((1, 1, 1))
     if tp_selection == 'Daily' or tp_selection == 'Weekly' or tp_selection == 'Monthly':
         with scol1:
@@ -161,23 +162,40 @@ def single_company_stats():
 
 
 def company_comparison():
-    st.title("Company Comparison")
-    # open the licensees .csv file
+    st.title("Dispensary Comparison")
+    ### load the data ###
     license_info = "Licensees_0.csv"
-    # load saved list of dispersaries ids, sorted by number of sales
-    with open("sorted_dispo_sale_counts.pkl", 'rb') as f:
-        dispos_list = pickle.load(f)
-    
-    # current number of processed companies
-    #n = 50
-    # grab only the mme_id for each dispenary that has been processed
-    current_dispos = [dispos_list[i][0] for i in range(n)]
-    
     license_df = pd.read_csv(license_info)
     # keep only some information for now
     license_df = license_df[['global_id', 'name', 'address1', 'address2', 'city']]
-    # keep only processed companies in the list
-    license_df = license_df[license_df["global_id"].isin(current_dispos)]
+    totalSales_df = load_salesData("total_sales.csv")
+    recreationalSales_df = load_salesData("recreational_sales.csv")
+    medicalSales_df = load_salesData("medical_sales.csv")
+    companies = totalSales_df.columns
+    # collapse the licensees dataframe to what is currently parsed
+    license_df = license_df[license_df["global_id"].isin(companies)]
+    ######################################################################################
+    ######################################################################################
+    st.header("Select Dispensary for Comparison")
+    select_col1, select_col2, select_col3 = st.beta_columns((1,1,1))
+    with select_col1:
+        city = st.selectbox("Select City", list(license_df["city"].unique()))
+    with select_col2:
+        company = st.selectbox("Select Dispensary", list(license_df[license_df['city'] == city]["name"]))
+    with select_col3:
+        company_id = st.selectbox("Select Dispensary Id", list(license_df.query("city == @city & name == @company")['global_id']))
+    # return selected company information
+    st.table(license_df.loc[license_df['name'] == str(company)])
+    ######################################################################################
+    ######################################################################################
+    scope = st.selectbox("Scope of Comparison", ['Statewide', 'Local (Same City)'])
+    
+    if scope == 'Statewide':
+        st.write("Comparison of {0} ({1}) Performance Against All Dispensaries in the State".format(company, company_id))
+        pass
+    else:
+        st.write("Comparison of {0} ({1}) Performance Against All Dispensaries in {2}".format(company, company_id, city))
+        pass
     
     
     
