@@ -11,6 +11,10 @@ import pickle
 import os
 import plotly.express as px
 from datetime import datetime
+from geopy.geocoders import Nominatim
+from geopy.extra.rate_limiter import RateLimiter
+from streamlit_folium import folium_static
+import folium
 
 def load_salesData(filename):
     df = pd.read_csv(filename)
@@ -54,7 +58,12 @@ def homepage_app():
     st.markdown("""
                 - Complete extraction of sales data for all dispensaries located in the State of Washington.
                 - Build predictive capabilities utilizing sales data for each dispensary
+                - Move from city and state comparison to an adjustable radius for dispensary comparison.
+                - Expand analysis to specific products and product types
+                - Add selectable date range
                 """)
+    st.subheader('Things to Watch Out For')
+    st.write("There are still some errors in the geocoding of address to (Latitude, Longitude) that could result in inproper location of the dispensary.  I am currently working on sorting that out.")
     st.header("Locations of Dispensaries Across the State")
     st.table(license_df["city"].unique())
     
@@ -192,11 +201,98 @@ def company_comparison():
     
     if scope == 'Statewide':
         st.write("Comparison of {0} ({1}) Performance Against All Dispensaries in the State".format(company, company_id))
-        pass
     else:
-        st.write("Comparison of {0} ({1}) Performance Against All Dispensaries in {2}".format(company, company_id, city))
-        pass
-    
-    
-    
-    
+        num_dispensaries = len(list(license_df[license_df['city'] == city]["name"]))
+        if num_dispensaries == 1:
+            st.write("There is only {} dispensary in this town that is presently in the database.  Please set comparison to Statewide.".format(num_dispensaries))
+        else:
+            st.write("There are {} dispensaries in this town that are presently in the database.".format(num_dispensaries))
+            st.write("Comparison of {0} ({1}) Performance Against All Other Dispensaries in {2}".format(company, company_id, city))
+            dispensaries_local = license_df[license_df['city'] == city][["global_id", "name"]]
+            dispensaries_other = dispensaries_local[dispensaries_local["global_id"] != company_id]
+            
+            st.subheader("Locations of Dispensaries in {}".format(city))
+            map_df = license_df[license_df['city'] == city]
+            map_df['Full Address'] = map_df[['address1', 'city']].apply(lambda row: ' '.join(row.values.astype(str)), axis=1)
+            #st.table(map_df)
+            geolocator = Nominatim(user_agent="myGeocoder")
+            geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
+            #Applying the method to pandas DataFrame
+            map_df['main-address'] = map_df['Full Address'].apply(geocode)
+            map_df['Lat'] = map_df['main-address'].apply(lambda x: x.latitude if x else None)
+            map_df['Lon'] = map_df['main-address'].apply(lambda x: x.longitude if x else None)
+            st.table(map_df)
+            
+            st.write('The selected dispensary for comparison is shown on the map with a blue marker.  All other dispensaries are shown on the map with red markers.')
+            
+            selected_dispo = map_df[map_df['global_id'] == company_id]
+            m = folium.Map(location=[selected_dispo['Lat'], selected_dispo['Lon']], zoom_start=12)
+            tooltip = company
+            folium.Marker([selected_dispo['Lat'], selected_dispo['Lon']], popup=company, tooltip=tooltip).add_to(m)
+            other_map_df = map_df[map_df['global_id'] != company_id]
+            for i in range(len(other_map_df)):
+                folium.Marker(
+                    location = [other_map_df.iloc[i]['Lat'], other_map_df.iloc[i]['Lon']],
+                    popup=other_map_df.iloc[i]['name'],
+                    icon=folium.Icon(color="red")
+                    ).add_to(m)
+            folium_static(m)
+            ### resampling dictionary ###
+            resample_dict = {'Daily': 'D', 'Weekly': 'W', 'Monthly': 'M', 'Quarterly': 'Q',
+                     'Yearly': 'Y'}
+            st.header("Sales Data Summary for {}".format(company.rstrip()))
+            tp_selection = st.selectbox("Select Time Period Sampling", list(resample_dict.keys()))
+            ######################################################################################
+            query_string = "`" + str(company_id) + "` > 0"
+            ### dispensary of interest, need to get the rest of them ###
+            medicalSales = medicalSales_df.query(query_string)[str(company_id)].resample(resample_dict[tp_selection]).sum().to_frame()
+            s2_data    = medicalSales_df.query(query_string)[list(dispensaries_other['global_id'])].resample(resample_dict[tp_selection]).sum()
+            recreationalSales = recreationalSales_df.query(query_string)[str(company_id)].resample(resample_dict[tp_selection]).sum().to_frame()
+            s3_data    = recreationalSales_df.query(query_string)[list(dispensaries_other['global_id'])].resample(resample_dict[tp_selection]).sum()
+            totalSales = totalSales_df.query(query_string)[str(company_id)].resample(resample_dict[tp_selection]).sum().to_frame()
+            s1_data    = totalSales_df.query(query_string)[list(dispensaries_other['global_id'])].resample(resample_dict[tp_selection]).sum()
+            min_date = pd.to_datetime(totalSales.index.values.min())
+            max_date = pd.to_datetime(totalSales.index.values.max())
+            st.write("Total Sales for {0} Between {1} and {2}: ${3:,.2f}".format(company,
+                                                                                 min_date.date(),
+                                                                                 max_date.date(),
+                                                                                 totalSales.sum()[0]))
+            average_totalSales = totalSales_df[list(dispensaries_other["global_id"])].sum().mean()
+            st.write("Average Total Sales for the {0} Other Dispensaries in {1}: ${2:,.2f}".format(num_dispensaries-1,
+                                                                                                   city,
+                                                                                                   average_totalSales))
+            totalSales_percentDiff = ((totalSales.sum()[0] - average_totalSales) / average_totalSales) * 100
+            if totalSales_percentDiff >= 0:
+                st.write("{0} ({1}) performed {2:.2f}% better compared to the average total sales of the other dispensaries in {3}.".format(company,
+                                                                                                                                            company_id,
+                                                                                                                                            totalSales_percentDiff,
+                                                                                                                                            city))
+            else:
+                st.write("{0} ({1}) performed {2:.2f}% worse compared to the average total sales of the other dispensaries in {3}.".format(company,
+                                                                                                                                           company_id,
+                                                                                                                                           -1*totalSales_percentDiff,
+                                                                                                                                           city))                
+            #st.table(totalSales.mean())
+            #st.table(s1_data.mean())
+
+            s1_allData = pd.concat([totalSales, s1_data], axis=0) 
+            s1 = px.bar(s1_allData.mean(), x=s1_allData.mean().index, y=0, color=0,
+                        title = "{0} Sales (Medical and Recreational) Comparison".format(tp_selection))
+            s1.update_xaxes(title="Company Global Id")
+            s1.update_yaxes(title="Average {} Sales (Medical and Recreational), USD".format(tp_selection)) 
+            st.plotly_chart(s1)
+
+            s2_allData = pd.concat([medicalSales, s2_data], axis=0) 
+            s2 = px.bar(s2_allData.mean(), x=s2_allData.mean().index, y=0, color=0,
+                        title = "{0} Medical Sales Comparison".format(tp_selection))
+            s2.update_xaxes(title="Company Global Id")
+            s2.update_yaxes(title="Average {} Medical Sales, USD".format(tp_selection)) 
+            st.plotly_chart(s2)
+
+            s3_allData = pd.concat([recreationalSales, s3_data], axis=0) 
+            s3 = px.bar(s3_allData.mean(), x=s3_allData.mean().index, y=0, color=0,
+                        title = "{0} Recreational Sales Comparison".format(tp_selection))
+            s3.update_xaxes(title="Company Global Id")
+            s3.update_yaxes(title="Average {} Recreational Sales, USD".format(tp_selection)) 
+            st.plotly_chart(s3, width = 200)
+            
