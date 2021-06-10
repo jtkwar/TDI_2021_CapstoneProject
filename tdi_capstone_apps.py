@@ -7,11 +7,7 @@ Created on Sun May 16 16:50:07 2021
 import streamlit as st
 import pandas as pd
 import numpy as np
-import os
 import plotly.express as px
-from datetime import datetime
-from geopy.geocoders import Nominatim
-from geopy.extra.rate_limiter import RateLimiter
 from streamlit_folium import folium_static
 import folium
 

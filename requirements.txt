@@ -1,0 +1,8 @@
+pandas
+streamlit
+plotly
+streamlit_folium
+folium
+os
+sys
+scipy.fft
