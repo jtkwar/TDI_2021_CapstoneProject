@@ -6,11 +6,12 @@ This is a temporary script file.
 """
 
 import os
-os.chdir("C:\\Users\\Jeff\\Documents\\Cannabis Capstone\\streamlit")
-import sys
+my_dir = os.getcwd()
+os.chdir(my_dir)
+#import sys
 import pandas as pd
 import numpy as np
-import scipy.fft
+#import scipy.fft
 import streamlit as st
 import plotly.express as px
 from streamlit_multiApp import MultiApp
