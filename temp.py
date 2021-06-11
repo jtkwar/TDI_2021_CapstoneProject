@@ -5,9 +5,9 @@ Spyder Editor
 This is a temporary script file.
 """
 
-import os
-my_dir = os.getcwd()
-os.chdir(my_dir)
+#import os
+#my_dir = os.getcwd()
+#os.chdir(my_dir)
 #import sys
 import pandas as pd
 import numpy as np
