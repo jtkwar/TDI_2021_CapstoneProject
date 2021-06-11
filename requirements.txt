@@ -1,8 +1,7 @@
 pandas
+numpy
 streamlit
 plotly
-streamlit_folium
-folium
-os
-sys
-scipy.fft
+geopandas
+folium==0.11.0
+streamlit_folium==0.4.0
